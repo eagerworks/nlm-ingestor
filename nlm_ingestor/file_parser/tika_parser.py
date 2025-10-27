@@ -6,6 +6,7 @@ from nlm_utils.utils.utils import ensure_bool
 from tika import parser
 
 from nlm_ingestor.file_parser.file_parser import FileParser
+from nlm_ingestor.ingestor_utils.pdf_sanitizer import sanitize_pdf_for_tika
 
 
 class TikaFileParser(FileParser):
@@ -13,6 +14,17 @@ class TikaFileParser(FileParser):
         pass
 
     def parse_to_html(self, filepath, do_ocr=False):
+        # CVE-2025-54988 Mitigation: Remove XFA forms from PDFs to prevent XXE attacks
+        # This compensating control eliminates the vulnerable code path before
+        # the PDF reaches the vulnerable Tika server (tika-parser-pdf-module 2.9.3)
+        sanitized_filepath, sanitization_result = sanitize_pdf_for_tika(filepath)
+
+        if sanitization_result and sanitization_result.xfa_removed:
+            print(f"CVE-2025-54988 MITIGATION: XFA forms removed from PDF before Tika processing: {filepath}")
+
+        # Use the sanitized filepath for Tika processing
+        filepath = sanitized_filepath
+
         # Turn off OCR by default
         timeout = 3000
         headers = {

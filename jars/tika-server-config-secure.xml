@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CVE-2025-23184 Mitigation Configuration
+
+  This configuration forces Tika to restart its forked process every 1000 files,
+  clearing any accumulated resource leaks (file handles, temp files) from the
+  Apache CXF CachedOutputStream vulnerability.
+
+  All other settings use Tika defaults.
+-->
+<properties>
+  <server>
+    <params>
+      <!-- Restart forked process after 1000 files to clear leaked resources -->
+      <maxFiles>1000</maxFiles>
+
+      <!-- Enable forking (required for maxFiles to work) -->
+      <noFork>false</noFork>
+
+      <!-- Allow unlimited restarts for continuous operation -->
+      <maxRestarts>-1</maxRestarts>
+    </params>
+  </server>
+</properties>
+
