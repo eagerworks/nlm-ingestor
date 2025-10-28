@@ -28,9 +28,10 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends openjdk-21-jre-headless && \
     rm -rf /var/lib/apt/lists/*
 # install essential packages
+# libqpdf-dev: Required for pikepdf (CVE-2025-54988 mitigation dependency)
 RUN apt-get update && apt-get install -y \
   libxml2-dev libxslt-dev zlib1g-dev \
-  build-essential libmagic-dev && \
+  build-essential libmagic-dev libqpdf-dev && \
   rm -rf /var/lib/apt/lists/*
 
 # install tesseract and related dependencies
