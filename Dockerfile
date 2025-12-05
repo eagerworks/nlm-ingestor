@@ -1,86 +1,81 @@
-# syntax=docker/dockerfile:experimental
-FROM python:3.11-slim-trixie
+FROM 090802221799.dkr.ecr.us-west-2.amazonaws.com/chainguard/python:3.11.14-dev
 
-# Create a non-root user with numeric UID
-RUN groupadd -r appuser -g 1001 && \
-    useradd -r -g appuser -u 1001 -m -d /home/appuser appuser
+# Switch to root to install system packages
+USER root
 
-# Update and upgrade system packages to get the latest security fixes
-RUN apt-get update && apt-get upgrade -y && \
-  apt-get install -y --no-install-recommends libgomp1 wget && \
-  rm -rf /var/lib/apt/lists/*
+# Add the Wolfi OS community repository
+RUN apk update && apk add --no-cache wget && \
+    wget https://packages.wolfi.dev/os/wolfi-signing.rsa.pub -O /etc/apk/keys/wolfi-signing.rsa.pub && \
+    echo "https://packages.wolfi.dev/os" >> /etc/apk/repositories && \
+    apk update && apk add --no-cache \
+    bash \
+    openjdk-21-jre \
+    tesseract \
+    file \
+    libmagic \
+    libxml2 libxml2-dev \
+    libxslt libxslt-dev \
+    zlib zlib-dev \
+    build-base \
+    qpdf qpdf-dev \
+    git \
+    unzip \
+    openssh \
+    postgresql-client && \
+    # Manually download Tesseract English data
+    # Because language data packages are named differently or not available
+    mkdir -p /usr/share/tessdata && \
+    wget https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -O /usr/share/tessdata/eng.traineddata
 
-ENV APP_HOME /home/appuser
-ENV PYTHONPATH="${PYTHONPATH}:${APP_HOME}"
+# Create a non-root user
+RUN addgroup -S appuser -g 1001 && \
+    adduser -S -u 1001 -G appuser -h /home/appuser appuser
+
+ENV APP_HOME=/home/appuser
+ENV PYTHONPATH="${APP_HOME}"
 ENV PYTHONUNBUFFERED=1
-# Update system packages to get latest security fixes
-RUN apt-get update && \
-  apt-get upgrade -y && \
-  apt-get install -y --no-install-recommends \
-  libxml2 \
-  sqlite3 \
-  libopenjp2-7 \
-  postgresql-client && \
-  rm -rf /var/lib/apt/lists/*
-
-# Install Java from Trixie's default repository
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends openjdk-21-jre-headless && \
-    rm -rf /var/lib/apt/lists/*
-# install essential packages
-# libqpdf-dev: Required for pikepdf (CVE-2025-54988 mitigation dependency)
-RUN apt-get update && apt-get install -y \
-  libxml2-dev libxslt-dev zlib1g-dev \
-  build-essential libmagic-dev libqpdf-dev && \
-  rm -rf /var/lib/apt/lists/*
-
-# install tesseract and related dependencies
-RUN apt-get update && apt-get install -y \
-  tesseract-ocr lsb-release && \
-  echo "deb https://notesalexp.org/tesseract-ocr5/$(lsb_release -cs)/ $(lsb_release -cs) main" \
-  | tee /etc/apt/sources.list.d/notesalexp.list > /dev/null && \
-  apt-get update -oAcquire::AllowInsecureRepositories=true && \
-  apt-get install -y notesalexp-keyring -oAcquire::AllowInsecureRepositories=true --allow-unauthenticated && \
-  apt-get update && \
-  apt-get install -y tesseract-ocr libtesseract-dev && \
-  wget -P /usr/share/tesseract-ocr/5/tessdata/ \
-  https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata && \
-  rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && apt-get install -y unzip git && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+ENV PATH="${PATH}:${JAVA_HOME}/bin"
 
 WORKDIR ${APP_HOME}
+
+# Create necessary directories
 RUN mkdir -p ${APP_HOME}/whl && chown -R appuser:appuser ${APP_HOME}
+
+# Copy dependencies
 COPY whl/*.whl ${APP_HOME}/whl/
 COPY pyproject.toml poetry.lock ./
-RUN pip install --upgrade pip
-RUN pip install poetry && \
-  poetry config virtualenvs.create false && \
-  poetry install --no-root
 
-RUN apt-get update && apt-get install -y libmagic1 && rm -rf /var/lib/apt/lists/*
+# Install Python dependencies
+RUN pip install --upgrade pip && \
+    pip install poetry && \
+    poetry config virtualenvs.create false && \
+    poetry install --no-root
 
+# Copy application code
 COPY . ./
 
-# Create .ssh directory and set up SSH known_hosts before switching to non-root user
+# Set up SSH known_hosts
 RUN mkdir -p ${APP_HOME}/.ssh && \
     chmod 700 ${APP_HOME}/.ssh && \
-    ssh-keyscan github.com >> ${APP_HOME}/.ssh/known_hosts && \
-    chmod 600 ${APP_HOME}/.ssh/known_hosts
+    (command -v ssh-keyscan >/dev/null 2>&1 && ssh-keyscan github.com >> ${APP_HOME}/.ssh/known_hosts || true) && \
+    chmod 600 ${APP_HOME}/.ssh/known_hosts 2>/dev/null || true
 
-# Download NLTK data and tiktoken before switching to non-root user
-RUN python -m nltk.downloader -d /usr/share/nltk_data stopwords
-RUN python -m nltk.downloader -d /usr/share/nltk_data punkt
-RUN python -m nltk.downloader -d /usr/share/nltk_data punkt_tab
-RUN python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+# Download NLTK data
+RUN python -m nltk.downloader -d /usr/share/nltk_data stopwords punkt punkt_tab && \
+    python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 
-# Set proper ownership for all application files
+# Fix ownership
 RUN chown -R appuser:appuser ${APP_HOME}
 
 # Switch to non-root user
 USER 1001
 
+# Ensure run.sh is executable
 RUN chmod +x run.sh
 
 EXPOSE 5001
-CMD ./run.sh
+# Override the base image's Python ENTRYPOINT with bash
+ENTRYPOINT []
+# Use bash explicitly
+CMD ["/usr/bin/bash", "./run.sh"]
