@@ -1,0 +1,3 @@
+# Exclude unused Tika server JAR files from Docker image to reduce vulnerabilities
+jars/tika-server-standard-2.9.3_v1.jar
+jars/tika-server-standard-nlm-modified-2.9.2_v1.jar
