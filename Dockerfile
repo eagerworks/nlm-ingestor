@@ -1,4 +1,4 @@
-FROM 090802221799.dkr.ecr.us-west-2.amazonaws.com/chainguard/python:3.11.14-dev.12326
+FROM 090802221799.dkr.ecr.us-west-2.amazonaws.com/chainguard/python:3.11.14-dev-022626-latest
 
 # Switch to root to install system packages
 USER root
